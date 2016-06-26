@@ -1,0 +1,269 @@
+---
+title: "Data 643 - Project 2"
+author: "Justin Hink"
+date: "Sunday, June 26, 2016"
+output: pdf_document
+---
+
+```{r load-data, echo=FALSE, eval=TRUE, results='hide',message=FALSE}
+library(plyr)
+library(knitr)
+library(knitcitations)
+library(RefManageR)
+library(stargazer)
+library(ggplot2)
+library(grid)
+library(gridExtra)
+library(XLConnect)
+library(reshape2)
+
+library(grid)
+library(pROC)
+
+cleanbib()
+cite_options(style="markdown")
+
+# My ggplot theme
+myTheme <- theme(axis.ticks=element_blank(),
+                 axis.title=element_text(size="10"),
+                  panel.border = element_rect(color="gray", fill=NA), 
+                  panel.background=element_rect(fill="#FBFBFB"), 
+                  panel.grid.major.y=element_line(color="white", size=0.5), 
+                  panel.grid.major.x=element_line(color="white", size=0.5),
+                  plot.title=element_text(size="10"))
+
+setwd('C:/CUNY/IS643 - Recommender Systems/proj2')
+
+getwd()
+
+df<- read.csv('evals.csv')
+
+# Function that returns Root Mean Squared Error
+rmse <- function(error)
+{
+  sqrt(mean(error^2))
+}
+
+# Function that returns Mean Absolute Error
+mae <- function(error)
+{
+  mean(abs(error))
+}
+
+multiplot <- function(..., plotlist=NULL, file, cols=1, layout=NULL) {
+  require(grid)
+
+  # Make a list from the ... arguments and plotlist
+  plots <- c(list(...), plotlist)
+
+  numPlots = length(plots)
+
+  # If layout is NULL, then use 'cols' to determine layout
+  if (is.null(layout)) {
+    # Make the panel
+    # ncol: Number of columns of plots
+    # nrow: Number of rows needed, calculated from # of cols
+    layout <- matrix(seq(1, cols * ceiling(numPlots/cols)),
+                    ncol = cols, nrow = ceiling(numPlots/cols))
+  }
+
+ if (numPlots==1) {
+    print(plots[[1]])
+
+  } else {
+    # Set up the page
+    grid.newpage()
+    pushViewport(viewport(layout = grid.layout(nrow(layout), ncol(layout))))
+
+    # Make each plot, in the correct location
+    for (i in 1:numPlots) {
+      # Get the i,j matrix positions of the regions that contain this subplot
+      matchidx <- as.data.frame(which(layout == i, arr.ind = TRUE))
+
+      print(plots[[i]], vp = viewport(layout.pos.row = matchidx$row,
+                                      layout.pos.col = matchidx$col))
+    }
+  }
+}
+
+```
+## 1 Introduction
+For this project, I've decided to take a modified version of the recommender system I developed in project 1 and run it through a fairly thorough evaluation.  In addition, I've removed the Flask web app wrapper to facilitate more convenient testing.  (Re-inserting the Flask layer would be trivial if desired.)  
+
+## 2 Code
+
+Please see the github repo that contains all source for the recommendation engine (python) itself and the algo evaluation code (R):
+
+https://github.com/jhink7/data643Proj2
+
+## 3 Recommendation Engine Changes
+
+The algorithm has been modified such that now instead of returning the top 3 recommended users per user, it now returns a predicted score for a movie that the user has not seen. The key function call looks as follows:
+
+```{python, eval=FALSE}
+    user_id=5
+    movie_id=37
+    pred_rat = engine.predict_rating(user_id, movie_id)
+```
+
+Additionally, the algorithm has added two sets of tunable values that will affect it's operation.  These are:
+
+1) The algorithm used to generate similarity scores among users.  Choices are: Cosine (input as 'cos'), Jaccard (input as 'jac') and Combined (input as 'comb', this is the default).
+
+2) The amount of regression to the mean to apply.  Valid values are in the range 0 to 1 (default 0).  Note I am not validating the range of this input at the time.
+
+Calls made to the predict_rating function with these values specified look as follows:
+
+```{python, eval=FALSE}
+    user_id=5
+    movie_id=37
+    pred_rat = engine.predict_rating(user_id, movie_id, sim_mode='cos', rttm=0.25)
+```
+
+## 4 Test Methodology
+
+I split up the master ratings dataset into a training and evaluation dataset (randomly).  The predictions are generated using the training dataset while the evaluation dataset is used to provide user_id, movie_id, rating triplets to generate predictions and evaluate the efficacy of various tuner sets.
+
+For each value in the training dataset, 9 tuner sets were evaluated.  This test matrix is summarized below:
+
+Model    | Similarity Method | RTTM Amount                                     
+---------| ------------------| ------------
+`1`      |          comb     |      0 
+`2`      |          jac      |      0 
+`3`      |          cos      |      0 
+`4`      |          comb     |      0.25  
+`5`      |          jac      |      0.25  
+`6`      |          cos      |      0.25  
+`7`      |          comb     |      0.5  
+`8`      |          jac      |      0.5  
+`9`      |          cos      |      0.5  
+
+
+## 5 Model Evaluation
+
+The 9 models (or tuner sets) were evaluated based on their out of sample test results for correlation, root mean squared error, mean absolute error and area under (ROC) curve.
+
+The results for all models across these evaluation metrics can be seen below.
+
+```{r, message=FALSE, echo=FALSE, fig.height=6, fig.width=7.5,warning=FALSE}
+# correlation
+cor1 <- cor(df$rating, df$m1_hat)
+cor2 <-cor(df$rating, df$m2_hat)
+cor3 <-cor(df$rating, df$m3_hat)
+cor4 <-cor(df$rating, df$m4_hat)
+cor5 <-cor(df$rating, df$m5_hat)
+cor6 <-cor(df$rating, df$m6_hat)
+cor7 <-cor(df$rating, df$m7_hat)
+cor8 <-cor(df$rating, df$m8_hat)
+cor9 <-cor(df$rating, df$m9_hat)
+
+# rmse
+rmse1 <- rmse(df$rating - df$m1_hat)
+rmse2 <- rmse(df$rating - df$m2_hat)
+rmse3 <- rmse(df$rating - df$m3_hat)
+rmse4 <- rmse(df$rating - df$m4_hat)
+rmse5 <- rmse(df$rating - df$m5_hat)
+rmse6 <- rmse(df$rating - df$m6_hat)
+rmse7 <- rmse(df$rating - df$m7_hat)
+rmse8 <- rmse(df$rating - df$m8_hat)
+rmse9 <- rmse(df$rating - df$m9_hat)
+
+# mae
+mae1 <- mae(df$rating - df$m1_hat)
+mae2 <- mae(df$rating - df$m2_hat)
+mae3 <- mae(df$rating - df$m3_hat)
+mae4 <- mae(df$rating - df$m4_hat)
+mae5 <- mae(df$rating - df$m5_hat)
+mae6 <- mae(df$rating - df$m6_hat)
+mae7 <- mae(df$rating - df$m7_hat)
+mae8 <- mae(df$rating - df$m8_hat)
+mae9 <- mae(df$rating - df$m9_hat)
+
+roc1<-roc(rating ~ m1_hat, df, smooth=TRUE)
+roc2<-roc(rating ~ m2_hat, df, smooth=TRUE)
+roc3<-roc(rating ~ m3_hat, df, smooth=TRUE)
+roc4<-roc(rating ~ m4_hat, df, smooth=TRUE)
+roc5<-roc(rating ~ m5_hat, df, smooth=TRUE)
+roc6<-roc(rating ~ m6_hat, df, smooth=TRUE)
+roc7<-roc(rating ~ m7_hat, df, smooth=TRUE)
+roc8<-roc(rating ~ m8_hat, df, smooth=TRUE)
+roc9<-roc(rating ~ m9_hat, df, smooth=TRUE)
+
+# auc
+auc1 <- roc1$auc[1]
+auc2 <- roc2$auc[1]
+auc3 <- roc3$auc[1]
+auc4 <- roc4$auc[1]
+auc5 <- roc5$auc[1]
+auc6 <- roc6$auc[1]
+auc7 <- roc7$auc[1]
+auc8 <- roc8$auc[1]
+auc9 <- roc9$auc[1]
+
+row1 <- c("Model 1", round(cor1,2), round(rmse1, 2), round(mae1, 2), round(auc1, 2))
+row2 <- c("Model 2", round(cor2,2), round(rmse2, 2), round(mae2, 2), round(auc2, 2))
+row3 <- c("Model 3", round(cor3,2), round(rmse3, 2), round(mae3, 2), round(auc3, 2))
+row4 <- c("Model 4", round(cor4,2), round(rmse4, 2), round(mae4, 2), round(auc4, 2))
+row5 <- c("Model 5", round(cor5,2), round(rmse5, 2), round(mae5, 2), round(auc5, 2))
+row6 <- c("Model 6", round(cor6,2), round(rmse6, 2), round(mae6, 2), round(auc6, 2))
+row7 <- c("Model 7", round(cor7,2), round(rmse7, 2), round(mae7, 2), round(auc7, 2))
+row8 <- c("Model 8", round(cor8,2), round(rmse8, 2), round(mae8, 2), round(auc8, 2))
+row9 <- c("Model 9", round(cor9,2), round(rmse9, 2), round(mae9, 2), round(auc9, 2))
+
+diags <- rbind(row1, row2, row3, row4, row5, row6, row7, row8, row9)
+colnames(diags) <- c("Model", "Correlation", "RMSE", "MAE", "AUC")
+rownames(diags) <- NULL
+kable(diags)
+```
+
+It's apparent from the results that the tuner sets do in fact modify the algorithm's behavior and performance.  From these results it looks as though Model 6 (cosine similarity, 25% regression to the mean) is our best set of tuner values.  It has the highest correlation, lowest rmse, lowest mae and a reasonable auc.
+
+As part of any evaluation we need to be cognizant of how are residuals are behaving (obvious patterns can point out model bias and other problems).  One such check is to ensure our residuals are distributed in a nearly normal fashion.  Lets take a quick look at the distribution of our residuals for all of the models evaluated.
+
+```{r, message=FALSE, echo=FALSE, fig.height=5.5, fig.width=7.5,warning=FALSE}
+p1 <- ggplot() + aes(df$rating - df$m1_hat)+ geom_histogram(binwidth=0.25, colour="black", fill="white") +
+  labs(x="residuals")+ ggtitle("Model 1")
+p2 <- ggplot() + aes(df$rating - df$m2_hat)+ geom_histogram(binwidth=0.25, colour="black", fill="white") +
+  labs(x="residuals")+ ggtitle("Model 2")
+p3 <- ggplot() + aes(df$rating - df$m3_hat)+ geom_histogram(binwidth=0.25, colour="black", fill="white") +
+  labs(x="residuals")+ ggtitle("Model 3")
+p4 <- ggplot() + aes(df$rating - df$m4_hat)+ geom_histogram(binwidth=0.25, colour="black", fill="white") +
+  labs(x="residuals")+ ggtitle("Model 4")
+p5 <- ggplot() + aes(df$rating - df$m5_hat)+ geom_histogram(binwidth=0.25, colour="black", fill="white") +
+  labs(x="residuals")+ ggtitle("Model 5")
+p6 <- ggplot() + aes(df$rating - df$m6_hat)+ geom_histogram(binwidth=0.25, colour="black", fill="white") +
+  labs(x="residuals")+ ggtitle("Model 6")
+p7 <- ggplot() + aes(df$rating - df$m7_hat)+ geom_histogram(binwidth=0.25, colour="black", fill="white") +
+  labs(x="residuals")+ ggtitle("Model 7")
+p8 <- ggplot() + aes(df$rating - df$m8_hat)+ geom_histogram(binwidth=0.25, colour="black", fill="white") +
+  labs(x="residuals")+ ggtitle("Model 8")
+p9 <- ggplot() + aes(df$rating - df$m9_hat)+ geom_histogram(binwidth=0.25, colour="black", fill="white") +
+  labs(x="residuals") + ggtitle("Model 9")
+
+multiplot(p1, p4, p7, p2, p5, p8, p3, p6, p9, cols = 3)
+```
+
+There is a fairly normal look/feel to all of the residual sets, including our previously singled out Model 6.  There is nothing from these plots that would suggest that Model 6 has any obvious issues.
+
+Another interesting observation here is that as the models with higher levels of regression to the mean have higher amounts of left skew.  Not surprisingly this tells us that we need to be careful with how much regression to the mean is applied for this and other algorithms in the future.
+
+Finally, lets take a look at the ROC curve itself for our selected model 6.
+
+```{r, message=FALSE, echo=FALSE, fig.height=5.5, fig.width=7.5,warning=FALSE}
+df_rand <- data.frame(c(1,0), c(0,1))
+colnames(df_rand) <- c("x", "y")
+
+rp6 <- data.frame(roc6[2], roc6[1])
+colnames(rp6) <- c("spec", "sens")
+#rocp1 <- ggplot(rp6, aes(spec, sens)) + geom_line() + scale_x_reverse() + ggtitle("Model 6 ROC")
+
+rocp1 <- ggplot() + geom_line(data=rp6, aes(spec, sens), color = "blue") + geom_line(data=df_rand, aes(x, y),linetype="dotted") + scale_x_reverse() + ggtitle("Model 6 ROC")
+
+rocp1
+```
+
+The size of the area between the blue curve and the diagnoal dashed line is proportional to the advantage our algorithm has over a prediction algorithm that randomly chooses.  We can see that our algo does in fact out-perform a random movie rating predictor.  We can chalk this up as a small victory.
+
+## 6 Conclusion
+
+We tested 9 sets of tunable parameters for a newly modified version of project 1's movie recommendation algorithm over a number of evaluation criteria.  One tuner set's performance stood out in particular (Model 6). It used cosine similiarity and regressed predicted movie scores 25% to the mean.  
